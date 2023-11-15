@@ -1,0 +1,18 @@
+{
+  "data path": {
+    "datasets_path": "resources/data/DRIVE_datasets",
+    "drive_path": "resources/data/DRIVE",
+    "category_list": ["training", "test"],
+    "imgs_dir_list": ["images", "1st_manual", "mask"]
+  },
+  "data attributes": { "patch_height": 48, "patch_width": 48 },
+  "training settings": {
+    "N_subimgs": 190000,
+    "inside_FOV": false,
+    "N_epochs": 20,
+    "batch_size": 32
+  },
+  "result settings": {
+    "folder_list": ["code", "config", "data", "figure", "log", "model"]
+  }
+}

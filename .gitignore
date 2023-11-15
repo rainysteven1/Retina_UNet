@@ -1,0 +1,4 @@
+/result
+/resources/*
+!/resources/config/
+**/__pycache__
