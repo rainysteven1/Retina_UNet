@@ -45,12 +45,12 @@ class Process:
         )
         self.criterion = nn.CrossEntropyLoss()
 
-    def train(self, training_data, batch_size, epochs, loss_csv):
+    def train(self, training_data, batch_size, epochs, validation_split, loss_csv):
         self.log_model_summary(batch_size)
         dataset = DriverDataset(*training_data)
 
         n_samples = len(dataset)
-        n_val = int(n_samples * 0.1)
+        n_val = int(n_samples * validation_split)
         indices_val = np.random.choice(n_samples, n_val, replace=False)
         dataset_train = Subset(dataset, np.delete(np.arange(n_samples), indices_val))
         dataset_val = Subset(dataset, indices_val)

@@ -112,6 +112,20 @@ def masks_UNet(masks):
     return new_masks
 
 
+def group_images(data, per_row):
+    data = np.transpose(data, (0, 2, 3, 1))
+    all_stripe = []
+    for i in range(int(data.shape[0] / per_row)):
+        stripe = data[i * per_row]
+        for k in range(i * per_row + 1, (i + 1) * per_row):
+            stripe = np.concatenate((stripe, data[k]), axis=1)
+        all_stripe.append(stripe)
+    totimg = all_stripe[0]
+    for i in range(1, len(all_stripe)):
+        totimg = np.concatenate((totimg, all_stripe[i]), axis=0)
+    return totimg
+
+
 def gen_training_data(datasets_path, patch_height, patch_width, N_subimgs, inside_FOV):
     imgs = read_hdf5(os.path.join(datasets_path, "training", "imgs.hdf5"))
     masks = read_hdf5(os.path.join(datasets_path, "training", "groundTruth.hdf5"))
@@ -123,9 +137,4 @@ def gen_training_data(datasets_path, patch_height, patch_width, N_subimgs, insid
     imgs = imgs[:, :, cut_length : -1 - cut_length, :]
     masks = masks[:, :, cut_length : -1 - cut_length, :]
 
-    patches_imgs_train, patches_masks_train = extract_random(
-        imgs, masks, patch_height, patch_width, N_subimgs, inside_FOV
-    )
-    patches_masks_train = masks_UNet(patches_masks_train)
-
-    return patches_imgs_train, patches_masks_train
+    return extract_random(imgs, masks, patch_height, patch_width, N_subimgs, inside_FOV)

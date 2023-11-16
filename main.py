@@ -3,8 +3,9 @@ import ujson
 
 sys.path.insert(0, "./src")
 
-from src.data import write_datasets, gen_training_data
+from src.data import *
 from src.logger import LoggerFactory, init_file_handler
+from src.plot import visuliaze_sample_input
 from src.process import Process
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,8 +58,6 @@ if __name__ == "__main__":
             working_dir.joinpath(folder).mkdir(exist_ok=True)
         working_dir = str(working_dir)
         load_model_dir = f"{working_dir}/model"
-        scatter_dir = "%s/figure/scatter" % working_dir
-        os.makedirs(scatter_dir, exist_ok=True)
         shutil.copy(__file__, f"{working_dir}/code")
         shutil.copytree(f"{file_dir}/src", f"{working_dir}/code/src")
         shutil.copy(CONFIG_PATH, f"{working_dir}/config")
@@ -92,15 +91,28 @@ if __name__ == "__main__":
 
     if args.state == "train":
         loss_csv = os.path.join(working_dir, "log", "log_SGD.csv")
-        training_data = gen_training_data(
+        patches_imgs_train, patches_masks_train = gen_training_data(
             os.path.join(CURRENT_DIR, data_path["datasets_path"]),
             N_subimgs=training_settings["N_subimgs"],
             inside_FOV=training_settings["inside_FOV"],
             **data_attributes,
         )
+
+        N_sample = min(patches_imgs_train.shape[0], 40)
+        visuliaze_sample_input(
+            group_images(patches_imgs_train[0:N_sample, :, :, :], 5),
+            os.path.join(working_dir, "figure", "sample_input_imgs.png"),
+        )
+        visuliaze_sample_input(
+            group_images(patches_masks_train[0:N_sample, :, :, :], 5),
+            os.path.join(working_dir, "figure", "sample_input_masks.png"),
+        )
+
+        patches_masks_train = masks_UNet(patches_masks_train)
         process.train(
-            training_data,
+            (patches_imgs_train, patches_masks_train),
             training_settings["batch_size"],
             training_settings["N_epochs"],
+            training_settings["validation_split"],
             loss_csv,
         )

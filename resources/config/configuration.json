@@ -9,8 +9,9 @@
   "training settings": {
     "N_subimgs": 190000,
     "inside_FOV": false,
+    "batch_size": 32,
     "N_epochs": 20,
-    "batch_size": 32
+    "validation_split": 0.1
   },
   "result settings": {
     "folder_list": ["code", "config", "data", "figure", "log", "model"]
