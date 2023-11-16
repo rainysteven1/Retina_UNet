@@ -67,6 +67,7 @@ class Process:
 
             self.model.train()
             loss_train = 0.0
+            score_train = 0.0
             for x, y in loader_train:
                 x = x.to(self.device, dtype=torch.float32)
                 y = y.reshape(-1, 2).to(self.device, dtype=torch.float32)
@@ -77,10 +78,13 @@ class Process:
                 loss.backward()
                 self.optimizer.step()
                 loss_train += loss.item()
+                score_train += self.calculate_metrics(y, y_pred)
             loss_train /= len(loader_train)
+            score_train /= len(loader_train)
 
             self.model.eval()
             loss_eval = 0.0
+            score_eval = 0.0
             with torch.no_grad():
                 for x, y in loader_val:
                     x = x.to(self.device, dtype=torch.float32)
@@ -88,7 +92,9 @@ class Process:
                     y_pred = self.model(x).reshape(-1, 2)
                     loss = self.criterion(y_pred, y)
                     loss_eval += loss.item()
+                    score_eval += self.calculate_metrics(y, y_pred)
             loss_eval /= len(loader_val)
+            score_eval /= len(loader_val)
 
             duration = time.time() - start_time
             self.mean_epoch_time = (
@@ -106,9 +112,9 @@ class Process:
                     duration * 1e3,
                     self.mean_epoch_time * 1e3,
                     loss_train,
-                    1,
+                    score_train,
                     loss_eval,
-                    1,
+                    score_eval,
                     lr,
                 )
             )
@@ -118,9 +124,9 @@ class Process:
                         ("epoch", epoch),
                         ("lr", lr),
                         ("loss_train", loss_train),
-                        ("acc_train", 1),
+                        ("acc_train", score_train),
                         ("loss_eval", loss_eval),
-                        ("acc_eval", 1),
+                        ("acc_eval", score_eval),
                     ]
                 )
             )
@@ -151,3 +157,16 @@ class Process:
         sys.stdout = sys.__stdout__
         summary_output = output.getvalue()
         self.logger.info("Model:\n{}".format(summary_output))
+
+    def calculate_metrics(self, y_true, y_pred, threshold=0.5):
+        y_true = y_true.reshape(-1).to(device=self.device, dtype=torch.uint8)
+        y_true = y_true.cpu().numpy()
+
+        y_pred = torch.softmax(y_pred, dim=1)
+        y_pred = (
+            (y_pred > threshold).reshape(-1).to(device=self.device, dtype=torch.uint8)
+        )
+        y_pred = y_pred.cpu().numpy()
+
+        score_acc = accuracy_score(y_true, y_pred)
+        return score_acc
