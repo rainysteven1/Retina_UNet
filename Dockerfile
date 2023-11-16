@@ -4,4 +4,5 @@ WORKDIR /workspace
 
 RUN apt update && apt install -y libgl1-mesa-glx libglib2.0-dev
 
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && pip install pandas h5py torchsummary ujson opencv-python
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple 
+RUN pip install pandas h5py torchsummary ujson opencv-python scikit-learn

@@ -6,7 +6,15 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchsummary import summary
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    jaccard_score,
+    precision_recall_curve,
+    roc_auc_score,
+    roc_curve,
+)
 
 from src import DEVICE, GPU_NAME
 from dataset import DriverDataset
@@ -67,7 +75,7 @@ class Process:
 
             self.model.train()
             loss_train = 0.0
-            score_train = 0.0
+            acc_train = 0.0
             for x, y in loader_train:
                 x = x.to(self.device, dtype=torch.float32)
                 y = y.reshape(-1, 2).to(self.device, dtype=torch.float32)
@@ -78,13 +86,13 @@ class Process:
                 loss.backward()
                 self.optimizer.step()
                 loss_train += loss.item()
-                score_train += self.calculate_metrics(y, y_pred)
+                acc_train += self.calculate_accuracy(y, y_pred)
             loss_train /= len(loader_train)
-            score_train /= len(loader_train)
+            acc_train /= len(loader_train)
 
             self.model.eval()
             loss_eval = 0.0
-            score_eval = 0.0
+            acc_eval = 0.0
             with torch.no_grad():
                 for x, y in loader_val:
                     x = x.to(self.device, dtype=torch.float32)
@@ -92,9 +100,9 @@ class Process:
                     y_pred = self.model(x).reshape(-1, 2)
                     loss = self.criterion(y_pred, y)
                     loss_eval += loss.item()
-                    score_eval += self.calculate_metrics(y, y_pred)
+                    acc_eval += self.calculate_accuracy(y, y_pred)
             loss_eval /= len(loader_val)
-            score_eval /= len(loader_val)
+            acc_eval /= len(loader_val)
 
             duration = time.time() - start_time
             self.mean_epoch_time = (
@@ -112,9 +120,9 @@ class Process:
                     duration * 1e3,
                     self.mean_epoch_time * 1e3,
                     loss_train,
-                    score_train,
+                    acc_train,
                     loss_eval,
-                    score_eval,
+                    acc_eval,
                     lr,
                 )
             )
@@ -124,9 +132,9 @@ class Process:
                         ("epoch", epoch),
                         ("lr", lr),
                         ("loss_train", loss_train),
-                        ("acc_train", score_train),
+                        ("acc_train", acc_train),
                         ("loss_eval", loss_eval),
-                        ("acc_eval", score_eval),
+                        ("acc_eval", acc_eval),
                     ]
                 )
             )
@@ -145,6 +153,36 @@ class Process:
             self.model.state_dict, os.path.join(self.load_model_dir, "model.pth")
         )
 
+    def predict(self, test_data, batch_size):
+        self.model.load_state_dict(
+            torch.load(self.load_model_dir, map_location=self.device)
+        )
+        self.log_model_summary(batch_size)
+        self.logger.info(f"Loading Model State from {self.load_model_dir}")
+
+        dataset = DriverDataset(*test_data)
+        loader = DataLoader(dataset, batch_size, shuffle=False)
+        start_time = time.time()
+
+        self.model.eval()
+        loss_eval = 0.0
+        with torch.no_grad():
+            for x, y in loader:
+                x = x.to(self.device, dtype=torch.float32)
+                y = y.reshape(-1, 2).to(self.device, dtype=torch.float32)
+                y_pred = self.model(x).reshape(-1, 2)
+                loss = self.criterion(y_pred, y)
+                loss_eval += loss.item()
+
+        duration = time.time() - start_time
+        self.logger.info(
+            "Loss_eval: %.4e - %7.2fms"
+            % (
+                loss_eval,
+                duration * 1e3,
+            )
+        )
+
     def log_model_summary(self, batch_size):
         output = io.StringIO()
         sys.stdout = output
@@ -158,7 +196,7 @@ class Process:
         summary_output = output.getvalue()
         self.logger.info("Model:\n{}".format(summary_output))
 
-    def calculate_metrics(self, y_true, y_pred, threshold=0.5):
+    def calculate_accuracy(self, y_true, y_pred, threshold=0.5):
         y_true = y_true.reshape(-1).to(device=self.device, dtype=torch.uint8)
         y_true = y_true.cpu().numpy()
 
@@ -167,6 +205,4 @@ class Process:
             (y_pred > threshold).reshape(-1).to(device=self.device, dtype=torch.uint8)
         )
         y_pred = y_pred.cpu().numpy()
-
-        score_acc = accuracy_score(y_true, y_pred)
-        return score_acc
+        return accuracy_score(y_true, y_pred)
