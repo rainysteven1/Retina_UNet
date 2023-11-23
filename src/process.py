@@ -17,7 +17,7 @@ from sklearn.metrics import (
 )
 
 from src import DEVICE, GPU_NAME
-from dataset import DriverDataset
+from dataset import TrainingDataset, PredictionDataset
 from model import UNet
 
 
@@ -38,32 +38,33 @@ class Process:
         self.mean_epoch_time = 0.0
 
         self.input_dim = input_dim
+        self.output_dim = output_dim
         self.patch_height = patch_height
         self.patch_width = patch_width
         self.model = UNet(input_dim, output_dim, patch_height, patch_width).to(DEVICE)
-        self.optimizer = torch.optim.SGD(
-            self.model.parameters(),
-            lr=0.01,
-            weight_decay=1e-6,
-            momentum=0.3,
-            nesterov=False,
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=0.001, weight_decay=1e-4
         )
         self.scheduler = ReduceLROnPlateau(
             self.optimizer, "min", patience=5, verbose=True
         )
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.BCELoss()
 
     def train(self, training_data, batch_size, epochs, validation_split, loss_csv):
         self.log_model_summary(batch_size)
-        dataset = DriverDataset(*training_data)
+        dataset = TrainingDataset(*training_data)
 
         n_samples = len(dataset)
         n_val = int(n_samples * validation_split)
         indices_val = np.random.choice(n_samples, n_val, replace=False)
         dataset_train = Subset(dataset, np.delete(np.arange(n_samples), indices_val))
         dataset_val = Subset(dataset, indices_val)
-        loader_train = DataLoader(dataset_train, batch_size, shuffle=True)
-        loader_val = DataLoader(dataset_val, batch_size, shuffle=True)
+        loader_train = DataLoader(
+            dataset_train, batch_size, shuffle=True, num_workers=1, pin_memory=True
+        )
+        loader_val = DataLoader(
+            dataset_val, batch_size, shuffle=True, num_workers=1, pin_memory=True
+        )
         self.logger.info("number of training data: %d" % len(dataset_train))
         self.logger.info("number of validation data: %d" % len(dataset_val))
 
@@ -78,10 +79,10 @@ class Process:
             acc_train = 0.0
             for x, y in loader_train:
                 x = x.to(self.device, dtype=torch.float32)
-                y = y.reshape(-1, 2).to(self.device, dtype=torch.float32)
+                y = y.to(self.device, dtype=torch.float32)
 
                 self.optimizer.zero_grad()
-                y_pred = self.model(x).reshape(-1, 2)
+                y_pred = torch.sigmoid(self.model(x))
                 loss = self.criterion(y_pred, y)
                 loss.backward()
                 self.optimizer.step()
@@ -96,8 +97,8 @@ class Process:
             with torch.no_grad():
                 for x, y in loader_val:
                     x = x.to(self.device, dtype=torch.float32)
-                    y = y.reshape(-1, 2).to(self.device, dtype=torch.float32)
-                    y_pred = self.model(x).reshape(-1, 2)
+                    y = y.to(self.device, dtype=torch.float32)
+                    y_pred = torch.sigmoid(self.model(x))
                     loss = self.criterion(y_pred, y)
                     loss_eval += loss.item()
                     acc_eval += self.calculate_accuracy(y, y_pred)
@@ -153,35 +154,40 @@ class Process:
             self.model.state_dict, os.path.join(self.load_model_dir, "model.pth")
         )
 
-    def predict(self, test_data, batch_size):
+    def predict(self, patches_imgs_test, batch_size):
         self.model.load_state_dict(
             torch.load(self.load_model_dir, map_location=self.device)
         )
         self.log_model_summary(batch_size)
         self.logger.info(f"Loading Model State from {self.load_model_dir}")
 
-        dataset = DriverDataset(*test_data)
-        loader = DataLoader(dataset, batch_size, shuffle=False)
+        dataset = PredictionDataset(patches_imgs_test)
+        loader = DataLoader(dataset, batch_size)
         start_time = time.time()
+        predictions = torch.empty(
+            (0, self.patch_height * self.patch_width, self.output_dim),
+            device=self.device,
+            dtype=torch.float32,
+        )
 
         self.model.eval()
-        loss_eval = 0.0
         with torch.no_grad():
-            for x, y in loader:
+            for x in loader:
                 x = x.to(self.device, dtype=torch.float32)
-                y = y.reshape(-1, 2).to(self.device, dtype=torch.float32)
-                y_pred = self.model(x).reshape(-1, 2)
-                loss = self.criterion(y_pred, y)
-                loss_eval += loss.item()
+                y_pred = self.model(x)
+                y_pred = y_pred.view(y_pred.shape[0], y_pred.shape[1], -1)
+                y_pred = torch.permute(y_pred, (0, 2, 1))
+                y_pred = torch.sigmoid(y_pred)
+                predictions = torch.cat((predictions, y_pred), dim=0)
 
         duration = time.time() - start_time
-        self.logger.info(
-            "Loss_eval: %.4e - %7.2fms"
-            % (
-                loss_eval,
-                duration * 1e3,
-            )
+        predictions = predictions.reshape(
+            predictions.shape[0], self.patch_height * self.patch_width, self.output_dim
         )
+        predictions = predictions.detach().cpu().numpy()
+        self.logger.info("Duration - %7.2fms" % (duration * 1e3))
+
+        return predictions
 
     def log_model_summary(self, batch_size):
         output = io.StringIO()
@@ -200,7 +206,6 @@ class Process:
         y_true = y_true.reshape(-1).to(device=self.device, dtype=torch.uint8)
         y_true = y_true.cpu().numpy()
 
-        y_pred = torch.softmax(y_pred, dim=1)
         y_pred = (
             (y_pred > threshold).reshape(-1).to(device=self.device, dtype=torch.uint8)
         )

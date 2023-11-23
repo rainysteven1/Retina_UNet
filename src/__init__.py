@@ -3,18 +3,14 @@ import numpy as np
 import torch
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-GPU_ID = "1"
+GPU_ID = "0"
 os.environ["CUDA_VISIBLE_DEVICES"] = GPU_ID
 
-SEED = 1234
+SEED = 10
 
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-GPU_NAME = (
-    torch.cuda.get_device_name(0)
-    if DEVICE == "cuda"
-    else None
-)
+GPU_NAME = torch.cuda.get_device_name(0) if DEVICE == "cuda" else None

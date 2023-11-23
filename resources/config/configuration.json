@@ -16,7 +16,7 @@
   },
   "test settings": {
     "best_last": "best",
-    "hdf5_list": ["imgs", "groundTruth"],
+    "hdf5_list": ["imgs", "groundTruth", "borderMasks"],
     "full_images_to_test": 20,
     "N_group_visual": 1,
     "average_mode": true,
