@@ -7,9 +7,21 @@
   },
   "data attributes": { "patch_height": 48, "patch_width": 48 },
   "training settings": {
+    "hdf5_list": ["imgs", "groundTruth"],
     "N_subimgs": 190000,
     "inside_FOV": false,
+    "batch_size": 32,
     "N_epochs": 20,
+    "validation_split": 0.1
+  },
+  "test settings": {
+    "best_last": "best",
+    "hdf5_list": ["imgs", "groundTruth", "borderMasks"],
+    "full_images_to_test": 20,
+    "N_group_visual": 1,
+    "average_mode": true,
+    "stride_height": 5,
+    "stride_width": 5,
     "batch_size": 32
   },
   "result settings": {

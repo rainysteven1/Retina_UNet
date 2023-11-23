@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.nn import init
 
 
 class ConvBlock(nn.Module):
@@ -11,21 +10,28 @@ class ConvBlock(nn.Module):
             in_channels=input_dim,
             out_channels=output_dim,
             kernel_size=3,
-            padding="same",
+            padding=1,
         )
-        init.xavier_uniform_(conv1.weight)
+        bn1 = nn.BatchNorm2d(output_dim)
 
         conv2 = nn.Conv2d(
             in_channels=output_dim,
             out_channels=output_dim,
             kernel_size=3,
-            padding="same",
+            padding=1,
         )
-        init.xavier_uniform_(conv2.weight)
+        bn2 = nn.BatchNorm2d(output_dim)
 
-        relu = nn.ReLU()
-        dropout = nn.Dropout(0.2)
-        layer_list = [conv1, relu, dropout, conv2, relu]
+        relu = nn.ReLU(inplace=True)
+
+        layer_list = [
+            conv1,
+            bn1,
+            relu,
+            conv2,
+            bn2,
+            relu,
+        ]
         self.layers = nn.Sequential(*layer_list)
 
     def forward(self, inputs):
@@ -50,11 +56,10 @@ class DecoderBlock(nn.Module):
     def __init__(self, input_dim, output_dim) -> None:
         super().__init__()
 
-        self.up = nn.Sequential(
-            nn.Upsample(mode="bilinear", scale_factor=2),
-            nn.Conv2d(input_dim, output_dim, kernel_size=1),
+        self.up = nn.ConvTranspose2d(
+            input_dim, output_dim, kernel_size=2, stride=2, padding=0
         )
-        self.conv = ConvBlock(input_dim, output_dim)
+        self.conv = ConvBlock(2 * output_dim, output_dim)
 
     def forward(self, inputs, skip):
         x = self.up(inputs)
@@ -83,11 +88,8 @@ class UNet(nn.Module):
 
         # Classifier
         self.conv = nn.Conv2d(
-            in_channels=32, out_channels=output_dim, kernel_size=1, padding="same"
+            in_channels=32, out_channels=output_dim, kernel_size=1, padding=0
         )
-        init.xavier_uniform_(self.conv.weight)
-        self.relu = nn.ReLU()
-        self.softmax = nn.Softmax(dim=2)
 
     def forward(self, inputs):
         # Encoder
@@ -102,8 +104,6 @@ class UNet(nn.Module):
         d2 = self.d2(d1, s1)
 
         # Classifier
-        outputs = self.relu(self.conv(d2))
-        outputs = outputs.view(outputs.shape[0], outputs.shape[1], -1)
-        outputs = torch.permute(outputs, (0, 2, 1))
+        outputs = self.conv(d2)
 
         return outputs
